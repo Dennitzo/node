@@ -1,0 +1,17 @@
+# macOS / editor noise
+.DS_Store
+*.swp
+*.swo
+
+# Runtime data (Docker bind mounts)
+app-data/
+
+# Temporary/local secrets helper (runtime-generated)
+.btc_rpc_password
+
+# Local cloned source mirrors / archives (not needed to run mini stack)
+umbrel-apps/
+umbrel-v0.5.4/
+
+# Optional local logs
+*.log

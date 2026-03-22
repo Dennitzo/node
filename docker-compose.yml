@@ -1,0 +1,163 @@
+services:
+  bitcoin:
+    image: ghcr.io/getumbrel/umbrel-bitcoin:v1.2.1@sha256:edbccb43ba98d6adfad99c2f6cd5401b9dce0175ae1743d01017f8e01ca0eb05
+    user: "1000:1000"
+    restart: always
+    stop_grace_period: 15m30s
+    ports:
+      - "2100:3000"
+      - "${APP_BITCOIN_P2P_PORT}:${APP_BITCOIN_P2P_PORT}"
+      - "${APP_BITCOIN_RPC_PORT}:${APP_BITCOIN_RPC_PORT}"
+    volumes:
+      - ./app-data/bitcoin/data:/data
+    environment:
+      BITCOIND_EXTRA_ARGS: "-deprecatedrpc=create_bdb"
+      APPS_SUBNET: "${NETWORK_IP}/16"
+      P2P_PORT: "${APP_BITCOIN_P2P_PORT}"
+      P2P_WHITEBIND_PORT: "${APP_BITCOIN_P2P_WHITEBIND_PORT}"
+      RPC_PORT: "${APP_BITCOIN_RPC_PORT}"
+      TOR_PORT: "${APP_BITCOIN_TOR_PORT}"
+      ZMQ_RAWBLOCK_PORT: "${APP_BITCOIN_ZMQ_RAWBLOCK_PORT}"
+      ZMQ_RAWTX_PORT: "${APP_BITCOIN_ZMQ_RAWTX_PORT}"
+      ZMQ_HASHBLOCK_PORT: "${APP_BITCOIN_ZMQ_HASHBLOCK_PORT}"
+      ZMQ_SEQUENCE_PORT: "${APP_BITCOIN_ZMQ_SEQUENCE_PORT}"
+      ZMQ_HASHTX_PORT: "${APP_BITCOIN_ZMQ_HASHTX_PORT}"
+      TOR_HOST: "${APP_BITCOIN_TOR_PROXY_IP}"
+      TOR_SOCKS_PORT: "9050"
+      TOR_CONTROL_PORT: "9051"
+      TOR_CONTROL_PASSWORD: "moneyprintergobrrr"
+      I2P_HOST: "${APP_BITCOIN_I2P_DAEMON_IP}"
+      I2P_SAM_PORT: "7656"
+      BITCOIND_IP: "${APP_BITCOIN_NODE_IP}"
+      RPC_USER: "${APP_BITCOIN_RPC_USER}"
+      RPC_PASS: "${APP_BITCOIN_RPC_PASS}"
+      DEVICE_DOMAIN_NAME: "${DEVICE_DOMAIN_NAME}"
+      P2P_HIDDEN_SERVICE: "notset.onion"
+      RPC_HIDDEN_SERVICE: "notset.onion"
+    networks:
+      umbrel_main_network:
+        ipv4_address: ${APP_BITCOIN_NODE_IP}
+
+  electrs:
+    image: getumbrel/electrs:v0.11.0@sha256:0a2c6f573abfd8d724651c6ba1c1f3a9c740219c1cf0f4468043c3342170d8a5
+    restart: always
+    depends_on:
+      - bitcoin
+    environment:
+      ELECTRS_LOG_FILTERS: "INFO"
+      ELECTRS_NETWORK: "${APP_BITCOIN_NETWORK_ELECTRS}"
+      ELECTRS_DAEMON_RPC_ADDR: "${APP_BITCOIN_NODE_IP}:${APP_BITCOIN_RPC_PORT}"
+      ELECTRS_DAEMON_P2P_ADDR: "${APP_BITCOIN_NODE_IP}:${APP_BITCOIN_P2P_WHITEBIND_PORT}"
+      ELECTRS_ELECTRUM_RPC_ADDR: "0.0.0.0:${APP_ELECTRS_NODE_PORT}"
+      ELECTRS_SERVER_BANNER: "Umbrel Electrs (mini)"
+      ELECTRS_DB_DIR: "/data/db"
+    volumes:
+      - ./app-data/bitcoin/data/bitcoin:/data/.bitcoin:ro
+      - ./app-data/electrs/data/electrs:/data
+    ports:
+      - "${APP_ELECTRS_NODE_PORT}:${APP_ELECTRS_NODE_PORT}"
+    networks:
+      umbrel_main_network:
+        ipv4_address: ${APP_ELECTRS_NODE_IP}
+
+  electrs-ui:
+    image: getumbrel/umbrel-electrs:v1.0.4@sha256:fa2fd04f4c7515aad84f21640f5feab1417bc18e20bc65cda7ed97e59b8458db
+    restart: always
+    depends_on:
+      - electrs
+    environment:
+      ELECTRUM_HIDDEN_SERVICE: "notset.onion"
+      ELECTRUM_LOCAL_SERVICE: "${DEVICE_DOMAIN_NAME}"
+      ELECTRS_HOST: "${APP_ELECTRS_NODE_IP}"
+      BITCOIN_HOST: "${APP_BITCOIN_NODE_IP}"
+      RPC_USER: "${APP_BITCOIN_RPC_USER}"
+      RPC_PASSWORD: "${APP_BITCOIN_RPC_PASS}"
+      RPC_PORT: "${APP_BITCOIN_RPC_PORT}"
+    ports:
+      - "2102:3006"
+    networks:
+      umbrel_main_network:
+        ipv4_address: 10.21.21.24
+
+  mempool-db:
+    image: mariadb:10.5.12@sha256:dfcba5641bdbfd7cbf5b07eeed707e6a3672f46823695a0d3aba2e49bbd9b1dd
+    user: "1000:1000"
+    restart: always
+    stop_grace_period: 1m
+    volumes:
+      - ./app-data/mempool/mysql/data:/var/lib/mysql
+    environment:
+      MYSQL_DATABASE: "mempool"
+      MYSQL_USER: "mempool"
+      MYSQL_PASSWORD: "mempool"
+      MYSQL_ROOT_PASSWORD: "moneyprintergobrrr"
+    networks:
+      umbrel_main_network:
+        ipv4_address: ${APP_MEMPOOL_DB_IP}
+
+  mempool-api:
+    image: mempool/backend:v3.2.1@sha256:d3531090e3bdd9a3dd38151349c5027768c3b7132438db267df8d8f026e15e61
+    user: "1000:1000"
+    init: true
+    restart: always
+    stop_grace_period: 1m
+    depends_on:
+      - bitcoin
+      - electrs
+      - mempool-db
+    command: "./wait-for-it.sh mempool-db:3306 --timeout=720 --strict -- ./start.sh"
+    volumes:
+      - ./app-data/mempool/data:/backend/cache
+    environment:
+      CORE_RPC_HOST: ${APP_BITCOIN_NODE_IP}
+      CORE_RPC_PORT: ${APP_BITCOIN_RPC_PORT}
+      CORE_RPC_USERNAME: ${APP_BITCOIN_RPC_USER}
+      CORE_RPC_PASSWORD: ${APP_BITCOIN_RPC_PASS}
+      ELECTRUM_HOST: ${APP_ELECTRS_NODE_IP}
+      ELECTRUM_PORT: ${APP_ELECTRS_NODE_PORT}
+      ELECTRUM_TLS: "false"
+      DATABASE_HOST: ${APP_MEMPOOL_DB_IP}
+      DATABASE_PORT: "3306"
+      DATABASE_DATABASE: "mempool"
+      DATABASE_USERNAME: "mempool"
+      DATABASE_PASSWORD: "mempool"
+      MEMPOOL_HTTP_PORT: "8999"
+      MEMPOOL_CACHE_DIR: "/backend/cache"
+      MEMPOOL_CLEAR_PROTECTION_MINUTES: "20"
+      MEMPOOL_INDEXING_BLOCKS_AMOUNT: "52560"
+      MEMPOOL_STDOUT_LOG_MIN_PRIORITY: "info"
+      LIGHTNING_ENABLED: "false"
+      NODE_OPTIONS: "--max-old-space-size=2048"
+    networks:
+      umbrel_main_network:
+        ipv4_address: ${APP_MEMPOOL_API_IP}
+
+  mempool-web:
+    image: mempool/frontend:v3.2.1@sha256:dd126cf383bd425ad46710925697c6a7925675a535c1026c206f2c092231e106
+    user: "1000:1000"
+    init: true
+    restart: always
+    stop_grace_period: 1m
+    depends_on:
+      - mempool-db
+      - mempool-api
+    command: "./wait-for mempool-db:3306 --timeout=720 -- nginx -g 'daemon off;'"
+    environment:
+      FRONTEND_HTTP_PORT: ${APP_MEMPOOL_PORT}
+      BACKEND_MAINNET_HTTP_HOST: ${APP_MEMPOOL_API_IP}
+      NGINX_PORT: ${APP_MEMPOOL_PORT}
+      NGINX_HOSTNAME: ${APP_MEMPOOL_API_IP}
+      LIGHTNING_DETECTED_PORT: 0
+    ports:
+      - "${APP_MEMPOOL_PORT}:${APP_MEMPOOL_PORT}"
+    networks:
+      umbrel_main_network:
+        ipv4_address: ${APP_MEMPOOL_IP}
+
+networks:
+  umbrel_main_network:
+    name: umbrel_main_network
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${NETWORK_IP}/16
