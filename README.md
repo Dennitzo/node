@@ -35,3 +35,10 @@ cd node
 ## Note
 On first start, `bitcoind` needs significant time to sync the blockchain.  
 `mempool` and Electrs-backed wallet features become fully usable once sync has progressed sufficiently.
+
+## Troubleshooting (Colima)
+If your Docker config contains `"credsStore": "desktop"` but Docker Desktop is not installed,
+`docker compose` fails with `docker-credential-desktop: executable file not found`.
+
+`start-mini-umbrel.sh` now auto-detects this case and uses a temporary sanitized Docker config
+for the current run, preserving your existing Docker context.
