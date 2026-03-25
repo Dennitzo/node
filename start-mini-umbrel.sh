@@ -16,13 +16,18 @@ if [ -f "$orig_config_file" ] \
   tmp_docker_config="$(mktemp -d)"
   trap 'rm -rf "$tmp_docker_config"' EXIT
 
+  # Keep contexts/certs from the original Docker config so non-default contexts
+  # like "colima" continue to resolve.
+  cp -a "$orig_docker_config/." "$tmp_docker_config/"
+
   jq '
     del(.credsStore)
     | if has("credHelpers") then
         .credHelpers |= with_entries(select(.value != "desktop"))
         | if (.credHelpers | length) == 0 then del(.credHelpers) else . end
       else . end
-  ' "$orig_config_file" > "$tmp_docker_config/config.json"
+  ' "$orig_config_file" > "$tmp_docker_config/config.json.tmp"
+  mv "$tmp_docker_config/config.json.tmp" "$tmp_docker_config/config.json"
 
   export DOCKER_CONFIG="$tmp_docker_config"
 fi
