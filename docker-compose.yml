@@ -10,7 +10,7 @@ services:
     volumes:
       - bitcoin_data:/data
     environment:
-      BITCOIND_EXTRA_ARGS: "-deprecatedrpc=create_bdb"
+      BITCOIND_EXTRA_ARGS: "-deprecatedrpc=create_bdb,-dbcache=96,-maxmempool=64,-maxconnections=40,-par=1"
       APPS_SUBNET: "${NETWORK_IP}/16"
       P2P_PORT: "${APP_BITCOIN_P2P_PORT}"
       P2P_WHITEBIND_PORT: "${APP_BITCOIN_P2P_WHITEBIND_PORT}"
@@ -127,7 +127,7 @@ services:
       MEMPOOL_INDEXING_BLOCKS_AMOUNT: "52560"
       MEMPOOL_STDOUT_LOG_MIN_PRIORITY: "info"
       LIGHTNING_ENABLED: "false"
-      NODE_OPTIONS: "--max-old-space-size=2048"
+      NODE_OPTIONS: "--max-old-space-size=512"
     networks:
       umbrel_main_network:
         ipv4_address: ${APP_MEMPOOL_API_IP}
