@@ -1,7 +1,6 @@
 services:
   bitcoin:
     image: ghcr.io/getumbrel/umbrel-bitcoin:v1.2.1@sha256:edbccb43ba98d6adfad99c2f6cd5401b9dce0175ae1743d01017f8e01ca0eb05
-    user: "1000:1000"
     restart: always
     stop_grace_period: 15m30s
     ports:
@@ -9,7 +8,7 @@ services:
       - "${APP_BITCOIN_P2P_PORT}:${APP_BITCOIN_P2P_PORT}"
       - "${APP_BITCOIN_RPC_PORT}:${APP_BITCOIN_RPC_PORT}"
     volumes:
-      - ./app-data/bitcoin/data:/data
+      - bitcoin_data:/data
     environment:
       BITCOIND_EXTRA_ARGS: "-deprecatedrpc=create_bdb"
       APPS_SUBNET: "${NETWORK_IP}/16"
@@ -40,20 +39,23 @@ services:
 
   electrs:
     image: getumbrel/electrs:v0.11.0@sha256:0a2c6f573abfd8d724651c6ba1c1f3a9c740219c1cf0f4468043c3342170d8a5
+    user: "0:0"
     restart: always
     depends_on:
       - bitcoin
     environment:
       ELECTRS_LOG_FILTERS: "INFO"
       ELECTRS_NETWORK: "${APP_BITCOIN_NETWORK_ELECTRS}"
+      ELECTRS_DAEMON_DIR: "/data/.bitcoin/bitcoin"
+      ELECTRS_COOKIE_FILE: "/data/.bitcoin/bitcoin/.cookie"
       ELECTRS_DAEMON_RPC_ADDR: "${APP_BITCOIN_NODE_IP}:${APP_BITCOIN_RPC_PORT}"
       ELECTRS_DAEMON_P2P_ADDR: "${APP_BITCOIN_NODE_IP}:${APP_BITCOIN_P2P_WHITEBIND_PORT}"
       ELECTRS_ELECTRUM_RPC_ADDR: "0.0.0.0:${APP_ELECTRS_NODE_PORT}"
       ELECTRS_SERVER_BANNER: "Umbrel Electrs (mini)"
       ELECTRS_DB_DIR: "/data/db"
     volumes:
-      - ./app-data/bitcoin/data/bitcoin:/data/.bitcoin:ro
-      - ./app-data/electrs/data/electrs:/data
+      - bitcoin_data:/data/.bitcoin:ro
+      - electrs_data:/data
     ports:
       - "${APP_ELECTRS_NODE_PORT}:${APP_ELECTRS_NODE_PORT}"
     networks:
@@ -81,11 +83,10 @@ services:
 
   mempool-db:
     image: mariadb:10.5.12@sha256:dfcba5641bdbfd7cbf5b07eeed707e6a3672f46823695a0d3aba2e49bbd9b1dd
-    user: "1000:1000"
     restart: always
     stop_grace_period: 1m
     volumes:
-      - ./app-data/mempool/mysql/data:/var/lib/mysql
+      - mempool_db_data:/var/lib/mysql
     environment:
       MYSQL_DATABASE: "mempool"
       MYSQL_USER: "mempool"
@@ -97,7 +98,6 @@ services:
 
   mempool-api:
     image: mempool/backend:v3.2.1@sha256:d3531090e3bdd9a3dd38151349c5027768c3b7132438db267df8d8f026e15e61
-    user: "1000:1000"
     init: true
     restart: always
     stop_grace_period: 1m
@@ -107,7 +107,7 @@ services:
       - mempool-db
     command: "./wait-for-it.sh mempool-db:3306 --timeout=720 --strict -- ./start.sh"
     volumes:
-      - ./app-data/mempool/data:/backend/cache
+      - mempool_cache_data:/backend/cache
     environment:
       CORE_RPC_HOST: ${APP_BITCOIN_NODE_IP}
       CORE_RPC_PORT: ${APP_BITCOIN_RPC_PORT}
@@ -134,7 +134,6 @@ services:
 
   mempool-web:
     image: mempool/frontend:v3.2.1@sha256:dd126cf383bd425ad46710925697c6a7925675a535c1026c206f2c092231e106
-    user: "1000:1000"
     init: true
     restart: always
     stop_grace_period: 1m
@@ -161,3 +160,9 @@ networks:
     ipam:
       config:
         - subnet: ${NETWORK_IP}/16
+
+volumes:
+  bitcoin_data:
+  electrs_data:
+  mempool_db_data:
+  mempool_cache_data:
