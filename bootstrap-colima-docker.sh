@@ -6,7 +6,10 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROFILE="${COLIMA_PROFILE:-default}"
 CPU="${COLIMA_CPU:-8}"
 MEMORY_GIB="${COLIMA_MEMORY_GIB:-96}"
-DISK_GIB="${COLIMA_DISK_GIB:-1000}"
+DISK_GIB_INPUT="${COLIMA_DISK_GIB:-auto}"
+DISK_GIB=""
+DISK_RESERVE_GIB="${COLIMA_DISK_RESERVE_GIB:-30}"
+DISK_SOURCE_PATH="${COLIMA_DISK_SOURCE_PATH:-$HOME}"
 ARCH="${COLIMA_ARCH:-x86_64}"
 RUNTIME="${COLIMA_RUNTIME:-docker}"
 VM_TYPE="${COLIMA_VM_TYPE:-qemu}"
@@ -38,6 +41,68 @@ die() {
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Command '$1' not found."
+}
+
+run_colima() {
+  (cd / && colima "$@")
+}
+
+is_non_negative_int() {
+  [[ "$1" =~ ^[0-9]+$ ]]
+}
+
+is_positive_int() {
+  is_non_negative_int "$1" && [ "$1" -gt 0 ]
+}
+
+host_fs_value_kib() {
+  local path="$1"
+  local column="$2"
+  df -Pk "$path" 2>/dev/null | awk -v col="$column" 'NR==2 {print $col; exit}'
+}
+
+resolve_disk_target_gib() {
+  local mode total_kib avail_kib total_gib avail_gib computed
+  mode="$DISK_GIB_INPUT"
+
+  if ! is_non_negative_int "$DISK_RESERVE_GIB"; then
+    die "COLIMA_DISK_RESERVE_GIB must be a non-negative integer. Got '$DISK_RESERVE_GIB'."
+  fi
+
+  case "$mode" in
+    auto|free)
+      [ -d "$DISK_SOURCE_PATH" ] || die "COLIMA_DISK_SOURCE_PATH does not exist: $DISK_SOURCE_PATH"
+
+      total_kib="$(host_fs_value_kib "$DISK_SOURCE_PATH" 2 || true)"
+      avail_kib="$(host_fs_value_kib "$DISK_SOURCE_PATH" 4 || true)"
+      [ -n "$total_kib" ] || die "Unable to read filesystem total size for '$DISK_SOURCE_PATH'."
+      [ -n "$avail_kib" ] || die "Unable to read filesystem free space for '$DISK_SOURCE_PATH'."
+
+      total_gib="$((total_kib / 1024 / 1024))"
+      avail_gib="$((avail_kib / 1024 / 1024))"
+
+      if [ "$mode" = "auto" ]; then
+        computed="$((total_gib - DISK_RESERVE_GIB))"
+      else
+        computed="$((avail_gib - DISK_RESERVE_GIB))"
+      fi
+
+      if [ "$computed" -lt 20 ]; then
+        die "Resolved Colima disk size (${computed}GiB) is too small. Adjust COLIMA_DISK_RESERVE_GIB or COLIMA_DISK_GIB."
+      fi
+
+      DISK_GIB="$computed"
+      log "Resolved COLIMA_DISK_GIB=${mode} from '$DISK_SOURCE_PATH': total=${total_gib}GiB free=${avail_gib}GiB reserve=${DISK_RESERVE_GIB}GiB => disk=${DISK_GIB}GiB."
+      ;;
+    *)
+      if ! is_positive_int "$mode"; then
+        die "COLIMA_DISK_GIB must be a positive integer, 'auto', or 'free'. Got '$mode'."
+      fi
+
+      DISK_GIB="$mode"
+      log "Using explicit Colima disk size: ${DISK_GIB}GiB."
+      ;;
+  esac
 }
 
 brew_install_if_missing() {
@@ -83,19 +148,39 @@ current_arch() {
 }
 
 stop_colima_if_running() {
-  if colima status -p "$PROFILE" >/dev/null 2>&1; then
+  if run_colima status -p "$PROFILE" >/dev/null 2>&1; then
     log "Stopping running Colima profile '$PROFILE'..."
-    colima stop -p "$PROFILE"
+    run_colima stop -p "$PROFILE"
   fi
 }
 
 current_disk_size_gib() {
-  local disk_name
+  local disk_name raw value unit
   disk_name="$(current_disk_name || true)"
   [ -n "$disk_name" ] || return 0
 
-  LIMA_HOME="$LIMA_HOME_DIR" limactl disk list 2>/dev/null \
-    | awk -v name="$disk_name" '$1==name {gsub(/GiB/, "", $2); print int($2); exit}'
+  raw="$(LIMA_HOME="$LIMA_HOME_DIR" limactl disk list 2>/dev/null \
+    | awk -v name="$disk_name" '$1==name {print $2; exit}')"
+  [ -n "$raw" ] || return 0
+
+  value="${raw%%[A-Za-z]*}"
+  unit="${raw#$value}"
+
+  case "$unit" in
+    TiB)
+      awk -v v="$value" 'BEGIN { print int((v * 1024) + 0.999) }'
+      ;;
+    GiB)
+      awk -v v="$value" 'BEGIN { print int(v + 0.999) }'
+      ;;
+    MiB)
+      awk -v v="$value" 'BEGIN { print int((v / 1024) + 0.999) }'
+      ;;
+    *)
+      warn "Unrecognized disk size unit '$unit' from limactl value '$raw'."
+      awk -v v="$value" 'BEGIN { print int(v + 0.999) }'
+      ;;
+  esac
 }
 
 current_disk_name() {
@@ -112,7 +197,7 @@ ensure_colima_shape() {
       warn "Existing profile '$PROFILE' has vmType='${vm:-unknown}', arch='${arch:-unknown}'."
       warn "Recreating instance to enforce vmType='$VM_TYPE' and arch='$ARCH' (data disk is preserved)."
       stop_colima_if_running
-      colima delete -f -p "$PROFILE"
+      run_colima delete -f -p "$PROFILE"
     fi
   fi
 }
@@ -141,7 +226,7 @@ resize_disk_if_needed() {
 
 start_colima() {
   log "Starting Colima profile '$PROFILE'..."
-  colima start -p "$PROFILE" \
+  run_colima start -p "$PROFILE" \
     --runtime "$RUNTIME" \
     --cpu "$CPU" \
     --memory "$MEMORY_GIB" \
@@ -183,7 +268,10 @@ ensure_docker_context() {
 verify_runtime() {
   log "Runtime verification:"
   docker info --format 'Name={{.Name}} CPUs={{.NCPU}} MemBytes={{.MemTotal}}'
-  colima ssh -p "$PROFILE" -- sh -lc 'df -h /var/lib/docker'
+
+  if ! run_colima ssh -p "$PROFILE" -- sh -lc 'df -h /var/lib/docker'; then
+    warn "Could not read /var/lib/docker usage via colima ssh (likely missing host-path mount in VM)."
+  fi
 }
 
 start_stack() {
@@ -214,6 +302,7 @@ main() {
     brew_install_if_missing docker-compose
   fi
 
+  resolve_disk_target_gib
   write_colima_profile_config
   ensure_colima_shape
   resize_disk_if_needed

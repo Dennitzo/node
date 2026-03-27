@@ -31,14 +31,21 @@ Defaults applied by the script:
 - `vmType=qemu` (prevents the low-memory `vz` issue seen in this setup)
 - `cpu=8`
 - `memory=96GiB`
-- `disk=1000GiB` (fixes `bitcoind` disk-space crashes)
+- `disk=auto` (calculates dynamically from host disk size: `total - 30GiB` reserve)
 - reapplies `docker-compose.yml` stability tunings (`BITCOIND_EXTRA_ARGS`, `NODE_OPTIONS`)
 - starts `docker compose` stack after runtime validation
 
 Optional overrides:
 ```bash
 COLIMA_CPU=12 COLIMA_MEMORY_GIB=112 COLIMA_DISK_GIB=1500 ./bootstrap-colima-docker.sh
+COLIMA_DISK_GIB=free COLIMA_DISK_RESERVE_GIB=50 ./bootstrap-colima-docker.sh
 ```
+
+Disk modes:
+- `COLIMA_DISK_GIB=auto` (default): uses filesystem total size minus `COLIMA_DISK_RESERVE_GIB`
+- `COLIMA_DISK_GIB=free`: uses current free space minus `COLIMA_DISK_RESERVE_GIB`
+- `COLIMA_DISK_GIB=<number>`: fixed size in GiB (manual override)
+- `COLIMA_DISK_SOURCE_PATH=/path`: choose which mounted filesystem is measured
 
 Skip stack startup if you only want runtime setup:
 ```bash
