@@ -7,7 +7,8 @@ This setup runs **without full Umbrel OS**, but uses service configuration and i
 
 ## Configuration
 - `.env` (File)
-```BITCOIN_DRIVE=/Volumes/Bitcoin
+```bash
+BITCOIN_DRIVE=/Volumes/Bitcoin
 Change /Volumes/Bitcoin to your mounted hard drive
 ```
 
