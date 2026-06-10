@@ -8,7 +8,7 @@ services:
       - "${APP_BITCOIN_P2P_PORT}:${APP_BITCOIN_P2P_PORT}"
       - "${APP_BITCOIN_RPC_PORT}:${APP_BITCOIN_RPC_PORT}"
     volumes:
-      - bitcoin_data:/data
+      - ${BITCOIN_DRIVE}/bitcoin:/data
     environment:
       BITCOIND_EXTRA_ARGS: "-deprecatedrpc=create_bdb,-dbcache=96,-maxmempool=64,-maxconnections=40,-par=1"
       APPS_SUBNET: "${NETWORK_IP}/16"
@@ -54,8 +54,8 @@ services:
       ELECTRS_SERVER_BANNER: "Umbrel Electrs (mini)"
       ELECTRS_DB_DIR: "/data/db"
     volumes:
-      - bitcoin_data:/data/.bitcoin:ro
-      - electrs_data:/data
+      - ${BITCOIN_DRIVE}/bitcoin:/data/.bitcoin:ro
+      - ${BITCOIN_DRIVE}/electrs:/data
     ports:
       - "${APP_ELECTRS_NODE_PORT}:${APP_ELECTRS_NODE_PORT}"
     networks:
@@ -86,7 +86,7 @@ services:
     restart: always
     stop_grace_period: 1m
     volumes:
-      - mempool_db_data:/var/lib/mysql
+      - ${BITCOIN_DRIVE}/mempool-db:/var/lib/mysql
     environment:
       MYSQL_DATABASE: "mempool"
       MYSQL_USER: "mempool"
@@ -107,7 +107,7 @@ services:
       - mempool-db
     command: "./wait-for-it.sh mempool-db:3306 --timeout=720 --strict -- ./start.sh"
     volumes:
-      - mempool_cache_data:/backend/cache
+      - ${BITCOIN_DRIVE}/mempool-cache:/backend/cache
     environment:
       CORE_RPC_HOST: ${APP_BITCOIN_NODE_IP}
       CORE_RPC_PORT: ${APP_BITCOIN_RPC_PORT}
@@ -160,9 +160,3 @@ networks:
     ipam:
       config:
         - subnet: ${NETWORK_IP}/16
-
-volumes:
-  bitcoin_data:
-  electrs_data:
-  mempool_db_data:
-  mempool_cache_data:
