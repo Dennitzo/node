@@ -5,12 +5,11 @@ This setup runs **without full Umbrel OS**, but uses service configuration and i
 - `electrs`
 - `mempool` (api/web/db)
 
-## Files in the `node` root
-- `docker-compose.yml`
-- `.env`
-- `start-mini-umbrel.sh`
-- `stop-mini-umbrel.sh`
-- `app-data/*` (persistent data)
+## Configuration
+- `.env` (File)
+```BITCOIN_DRIVE=/Volumes/Bitcoin
+Change /Volumes/Bitcoin to your mounted hard drive
+```
 
 ## Start
 ```bash
